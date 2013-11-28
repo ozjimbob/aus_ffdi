@@ -6,8 +6,9 @@ library(sp)
 library(raster)
 library(maptools)
 library(gstat)
+library(car)
+library(stringr)
 
-data(countriesLow)
 
 ## All Oz Weather
 
@@ -42,26 +43,39 @@ in_data=subset(in_data,substr(in_data$Station,1,3)!="IDY")
 in_data=subset(in_data,substr(in_data$Station,1,1)!="|")
 in_data=subset(in_data,substr(in_data$Station,1,1)!="+")
 
-# Some stations marked as "Calm" - give them a wind speed instead
-in_data$WSpd[in_data$WDir==" Ca"]=0
-
 # We don't care about sites without observations
 in_data=subset(in_data,in_data$Temp != "-- ")
 in_data=subset(in_data,in_data$RH != "-- ")
 in_data=subset(in_data,in_data$WSpd != "--- ")
+
+
+# We don't care about Antarctica or anything after
+ant=which(in_data$Station=="Casey       ")
+in_data=in_data[1:(ant-1),]
+
+# Some stations marked as "Calm" - give them a wind speed instead
+in_data$WSpd[in_data$WDir==" Ca"]=0
+in_data$WDir[in_data$WDir==" Ca"]="Calm"
+
+WDirVec=c("N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW","Calm")
+WDirAng=c(seq(0,359,by=22.5),0)
+rcstring=paste("'",WDirVec,"'=",WDirAng,sep="",collapse=";")
+in_data$WindAng=recode(str_trim(in_data$WDir),rcstring)
+
+
+
+
 
 # Make the fields we're interested in numeric (and metric)
 in_data$Temp = as.numeric(in_data$Temp)
 in_data$RH = as.numeric(in_data$RH)
 in_data$WSpd = as.numeric(in_data$WSpd)*1.852
 
-# We don't care about Antarctica or anything after
-ant=which(in_data$Station=="Casey       ")
-in_data=in_data[1:(ant-1),]
 
 # Convert latitudes and longitudes to decimal
 in_data$Lat=-(as.numeric(substr(in_data$Lat,1,2))+(0.01*as.numeric((substr(in_data$Lat,3,4)))))
 in_data$Lon=(as.numeric(substr(in_data$Lon,1,3))+(0.01*as.numeric((substr(in_data$Lon,4,5)))))
+
 
 # Ignore eastern islands
 in_data=subset(in_data,in_data$Lon < 155)
@@ -81,8 +95,7 @@ unq=!duplicated(in_data$Station)
 in_data=in_data[unq,]
 
 
-
-DF=8
+DF=raster("DF.tif")
 FFDI=function(Temp,RH,Wind,DF){
   F <- 2 * exp(-.45 + .987 * log(DF + .001) - .0345 * RH + .0338 * Temp + .0234 * Wind) 
   F
@@ -152,7 +165,7 @@ pal_extreme=colorRampPalette(c("#890e00","#e40c01"))(25)
 pal_cat=colorRampPalette(c("#514657","#7d7d7d"))(100)
 all_pal=c(pal_low,pal_high,pal_vhigh,pal_severe,pal_extreme,pal_cat)
 
-aus=readShapePoly("aus_p.shp")
+aus=readShapePoly("aus.shp")
 png("ffdi_map.png",width=1000,height=1000)
 par(mai=c(1,1,1,1))
 plot(rFFDI,col=all_pal,main=paste("FFDI: ",Sys.time(),sep=""),zlim=c(0,200))
